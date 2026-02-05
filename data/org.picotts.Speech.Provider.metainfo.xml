@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="generic">
+  <id>org.picotts.Speech.Provider</id>
+  
+  <name>PicoTTS</name>
+  <summary>Speech provider for the Pico TTS voice sinthesizer</summary>
+  
+  <metadata_license>MIT</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  
+  <description>
+    <p>
+      Speech provider for Pico TTS voice sinthesizer
+    </p>
+  </description>
+    
+  <categories>
+    <category>AudioVideo</category>
+    <category>Player</category>
+  </categories>
+  
+  <provides>
+    <binary>speech-provider-picotts</binary>
+    <dbus type="session">org.picotts.Speech.Provider</dbus>
+  </provides>
+
+  <custom>
+    <value key="Spiel::provider_name">PicoTTS</value>
+  </custom>
+</component>
