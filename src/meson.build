@@ -7,7 +7,7 @@ speech_provider_dep = dependency('speech-provider-1.0',
                                  required: false)
 
 executable (meson.project_name(),
-            ['src/main.c'],
+            ['main.c'],
             dependencies: speech_provider_dep,
             install: true,
            )
