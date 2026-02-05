@@ -1,7 +1,7 @@
 project('speech-provider-picotts', 'c',
         version: '0.1.0',
         license: 'LGPL-2.1-or-later',
-	meson_version : '>= 0.58')
+	meson_version : '>= 0.53')
 
 version = meson.project_version()
 
