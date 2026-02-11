@@ -17,10 +17,59 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
+#include <glib.h>
+#include <gio/gio.h>
+#include <stdlib.h>
+
+#include "picotts-speech-provider.h"
+
+gboolean on_handle_synthesize(PicottsSpeechProvider *object,
+                              GDBusMethodInvocation *invocation,
+                              GVariant *pipe_fd,
+                              const gchar *text,
+                              const gchar *voice_id,
+                              gdouble pitch,
+                              gdouble rate,
+                              gboolean is_ssml,
+                              const gchar *language)
+{
+	g_print("Required to synthesize \"%s\" in language\n", text, language);
+
+	return TRUE;
+}
+
+static void
+on_name_acquired (GDBusConnection *connection,
+		  const gchar *name,
+		  gpointer user_data)
+{
+	PicottsSpeechProvider* skeleton;
+        skeleton = picotts_speech_provider_skeleton_new();
+
+	g_signal_connect(skeleton, "handle-synthesize", G_CALLBACK(on_handle_synthesize), NULL);
+
+        /* Append voices property */
+
+
+        g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/Picotts/Speech/Provider", NULL);
+}
 
 int main(int argc, char *argv[])
 {
-	printf("picotts speech provider\n");
+	GMainLoop *loop;
+
+	loop = g_main_loop_new(NULL, FALSE);
+
+	g_bus_own_name (G_BUS_TYPE_SESSION,
+			"org.Picotts.Speech.Provider",
+			G_BUS_NAME_OWNER_FLAGS_NONE,
+			NULL,
+			on_name_acquired,
+			NULL,
+			NULL,
+			NULL);
+
+	g_main_loop_run (loop);
+
 	return 0;
 }
