@@ -1,0 +1,6 @@
+  /home/alvaropg/work/podman/tlf/r2.8/mesonsc2-temis-proteus3/workspace/sources/speech-provider-picotts/data:
+  drwxrwxrwx. 1   525287   525287 236 Feb 11 12:22 .
+  drwxrwxrwx. 1   525287   525287 124 Feb 11 12:14 ..
+D -rw-rw-rw-. 1   525287   525287 739 Feb 11 12:20 org.picotts.Speech.Provider.metainfo.xml
+  -rw-r--r--. 1 alvaropg alvaropg 739 Feb 11 12:22 org.Picotts.Speech.Provider.metainfo.xml
+  -rw-rw-rw-. 1   525287   525287  87 Feb  9 18:38 org.picotts.Speech.Provider.service.in

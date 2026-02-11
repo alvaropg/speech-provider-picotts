@@ -11,7 +11,7 @@ localedir = prefix / get_option('localedir')
 datadir = prefix / get_option('datadir')
 pkgdatadir = datadir / meson.project_name()
 
-application_id = 'org.picotts.Speech.Provider'
+application_id = 'org.Picotts.Speech.Provider'
 
 subdir('src')
 
@@ -20,16 +20,16 @@ config.set('bindir', bindir)
 
 # DBus service
 configure_file(
-  input: 'data/org.picotts.Speech.Provider.service.in',
-  output: 'org.picotts.Speech.Provider.service',
+  input: 'data/org.Picotts.Speech.Provider.service.in',
+  output: 'org.Picotts.Speech.Provider.service',
   configuration: config,
 )
 install_data(
-  meson.current_build_dir() / 'org.picotts.Speech.Provider.service',
+  meson.current_build_dir() / 'org.Picotts.Speech.Provider.service',
   install_dir: get_option('datadir') / 'dbus-1/services',
 )
 
 install_data(
-  'data' / 'org.picotts.Speech.Provider.metainfo.xml',
+  'data' / 'org.Picotts.Speech.Provider.metainfo.xml',
   install_dir: get_option('datadir') / 'metainfo',
 )

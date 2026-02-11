@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="generic">
-  <id>org.picotts.Speech.Provider</id>
+  <id>org.Picotts.Speech.Provider</id>
   
   <name>PicoTTS</name>
   <summary>Speech provider for the Pico TTS voice sinthesizer</summary>
@@ -21,7 +21,7 @@
   
   <provides>
     <binary>speech-provider-picotts</binary>
-    <dbus type="session">org.picotts.Speech.Provider</dbus>
+    <dbus type="session">org.Picotts.Speech.Provider</dbus>
   </provides>
 
   <custom>

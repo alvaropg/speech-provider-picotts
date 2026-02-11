@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=org.picotts.Speech.Provider
-Exec=@bindir@/speech-provider-picotts
