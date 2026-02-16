@@ -33,7 +33,7 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
                               gboolean is_ssml,
                               const gchar *language)
 {
-	g_print("Required to synthesize \"%s\" in language\n", text, language);
+	g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
 
 	return TRUE;
 }
