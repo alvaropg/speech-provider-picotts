@@ -43,13 +43,27 @@ on_name_acquired (GDBusConnection *connection,
 		  const gchar *name,
 		  gpointer user_data)
 {
-	PicottsSpeechProvider* skeleton;
+	PicottsSpeechProvider *skeleton;
+        GVariantBuilder *builder_voice;
+	GVariant *voices;
+
         skeleton = picotts_speech_provider_skeleton_new();
 
 	g_signal_connect(skeleton, "handle-synthesize", G_CALLBACK(on_handle_synthesize), NULL);
 
-        /* Append voices property */
+        picotts_speech_provider_set_name(skeleton, "PicoTTS");
 
+        /* audio_format = "audio/x-raw,format=S16LE,channels=1,rate=256000" */
+	/* "a(ssstas)" */
+        builder_voice = g_variant_builder_new(G_VARIANT_TYPE_ARRAY);
+        /* ["Charlie", "gmw/en-US", audio_format, features, ["en-US"]], */
+	/* "EVENTS_SENTENCE" 0x2 */
+	g_variant_builder_add (builder_voice, "{ssstas}", "Paco", "es-ES", "audio/x-raw,format=S16LE,channels=1,rate=256000", G_GUINT64_CONSTANT(0x2), "es-ES");
+	voices = g_variant_new ("as", builder_voice);
+
+        picotts_speech_provider_set_voices(skeleton, voices);
+        g_variant_unref(voices);
+	g_variant_unref(builder_voice);
 
         g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/Picotts/Speech/Provider", NULL);
 }
