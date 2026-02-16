@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
 
 	loop = g_main_loop_new(NULL, FALSE);
 
-	g_bus_own_name (G_BUS_TYPE_SESSION,
+	g_bus_own_name (G_BUS_TYPE_SYSTEM,
 			"org.Picotts.Speech.Provider",
 			G_BUS_NAME_OWNER_FLAGS_NONE,
 			NULL,
