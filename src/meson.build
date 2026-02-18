@@ -15,5 +15,6 @@ deps += dependency('gio-unix-2.0',
 executable (meson.project_name(),
             ['main.c', 'picotts-speech-provider.c', 'picotts-speech-provider.h'],
             dependencies: deps,
+            link_args: '-lttspico',
             install: true,
            )

@@ -24,6 +24,16 @@
 
 #include "picotts-speech-provider.h"
 
+#define PICO_MEM_SIZE   2500000
+#define PICO_VOICE_NAME "PicoVoice"
+
+void           *pico_mem_area    = NULL;
+pico_System     pico_system      = NULL;
+pico_Engine     pico_engine      = NULL;
+pico_Resource   pico_ta_resource = NULL;
+pico_Resource   pico_sg_resource = NULL;
+
+
 gboolean on_handle_synthesize(PicottsSpeechProvider *object,
                               GDBusMethodInvocation *invocation,
                               GVariant *pipe_fd,
@@ -35,6 +45,9 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
                               const gchar *language)
 {
 	g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
+
+	if (is_ssml)
+          g_info("SSML not supported\n");
 
 	return TRUE;
 }
@@ -81,6 +94,82 @@ on_name_acquired (GDBusConnection *connection,
 int main(int argc, char *argv[])
 {
 	GMainLoop *loop;
+        gchar *resource_file = NULL;
+        pico_Status ret;
+        pico_Retstring outMessage;
+	pico_Char *pico_ta_resource_name  = NULL;
+	pico_Char *pico_sg_resource_name  = NULL;
+
+        /* initialize picotts */
+        ret = pico_initialize(pico_mem_area, PICO_MEM_SIZE, &pico_system);
+        if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot initialize pico (%i): %s\n", ret, outMessage);
+	}
+
+        /* load the text analysis Lingware resource file */
+	resource_file = g_build_filename("usr", "share", "pico", "lang", "es-ES_ta.bin", NULL);
+        ret = pico_loadResource(pico_system, (pico_Char *) resource_file, &pico_ta_resource);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot load text analysis resource file (%i): %s\n", ret, outMessage);
+        }
+	if (resource_file)
+		g_free(resource_file);
+
+        /* load the signal generation Lingware resource file */
+        resource_file = g_build_filename("usr", "share", "pico", "lang", "es-ES_zl0_sg.bin", NULL);
+	ret = pico_loadResource(pico_system, (pico_Char *) resource_file, &pico_sg_resource);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot load signal generation Lingware resource file (%i): %s\n", ret, outMessage);
+        }
+	if (resource_file)
+		g_free(resource_file);
+
+	/* get the text analysis resource name */
+	pico_ta_resource_name  = (pico_Char *) malloc(PICO_MAX_RESOURCE_NAME_SIZE);
+        ret = pico_getResourceName(pico_system, pico_ta_resource, (char *) pico_ta_resource_name);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot get the text analysis resource name (%i): %s\n", ret, outMessage);
+	}
+
+	/* get the signal generation resource name */
+	pico_sg_resource_name  = (pico_Char *) malloc( PICO_MAX_RESOURCE_NAME_SIZE );
+        ret = pico_getResourceName(pico_system, pico_sg_resource, (char *) pico_sg_resource_name);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot get the signal generation resource name (%i): %s\n", ret, outMessage);
+	}
+
+	/* create a voice definition */
+        ret = pico_createVoiceDefinition(pico_system, PICO_VOICE_NAME);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot create voice definition (%i): %s\n", ret, outMessage);
+        }
+
+	/* add the text analysis resource to the voice */
+        ret = pico_addResourceToVoiceDefinition(pico_system, (const pico_Char *)PICO_VOICE_NAME, pico_ta_resource_name);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot add the text analysis resource to the voice (%i): %s\n", ret, outMessage);
+	}
+
+	/* add the signal generation resource to the voice. */
+	ret = pico_addResourceToVoiceDefinition(pico_system, (const pico_Char *) PICO_VOICE_NAME, pico_sg_resource_name);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot add the signal generation resource to the voice (%i): %s\n", ret, outMessage);
+	}
+
+	/* create a new Pico engine. */
+	ret = pico_newEngine(pico_system, (const pico_Char *) PICO_VOICE_NAME, &pico_engine);
+	if (ret) {
+		pico_getSystemStatusMessage(pico_system, ret, outMessage);
+		g_error("Cannot create a new pico engine (%i): %s\n", ret, outMessage);
+        }
 
 	loop = g_main_loop_new(NULL, FALSE);
 
@@ -91,7 +180,7 @@ int main(int argc, char *argv[])
 			on_name_acquired,
 			NULL,
 			NULL,
-			NULL);
+			NULL);        
 
 	g_main_loop_run (loop);
 
