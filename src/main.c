@@ -105,34 +105,26 @@ on_name_acquired (GDBusConnection *connection,
 {
 	PicottsSpeechProvider *skeleton;
         GVariantBuilder voices;
-        /* GVariantBuilder langs; */
-	const gchar *langs_es[] = { "es-ES", NULL };
+        GVariantBuilder langs;
 
         skeleton = picotts_speech_provider_skeleton_new();
 	g_signal_connect(skeleton, "handle-synthesize", G_CALLBACK(on_handle_synthesize), NULL);
 
         picotts_speech_provider_set_name(skeleton, "PicoTTS");
 
-        /* audio_format = "audio/x-raw,format=S16LE,channels=1,rate=256000" */
-        /* "a(ssstas)" */
+	/* Voices */
         g_variant_builder_init(&voices, G_VARIANT_TYPE("a(ssstas)"));
-
-        /* g_variant_builder_init(&langs, G_VARIANT_TYPE("as")); */
-        /* g_variant_builder_add(&langs, "s", "es-ES"); */
-        /* g_variant_builder_add(&voices, "(ssstas)", "Voz Española", "voice-es-1", */
-        /*                       "audio/x-raw,format=S16LE,channels=1,rate=256000", */
-        /*                       (guint64)0x02u, &langs); */
-
-
-	/* Example voices */
-	g_variant_builder_add(&voices, "(ssstaas)",
-			      "PicoTTS Spanish (Spain)",                          /* name */
-			      "picotts-es_ES",                                    /* id */
-			      "audio/x-raw,format=S16LE,channels=1,rate=256000",  /* format */
-			      (guint64)0x02u,                                     /* features: EVENTS_SENTENCE */
-			      langs_es);                                          /* languages */
-
-        picotts_speech_provider_set_voices(skeleton, g_variant_builder_end(&voices));
+	g_variant_builder_init(&langs, G_VARIANT_TYPE("as"));
+        g_variant_builder_add(&langs, "s", "es-ES");
+	g_variant_builder_add(&voices, "(ssst@as)",
+			      "PicoTTS Spanish (Spain)",
+			      "picotts-es_ES",
+			      "audio/x-raw,format=S16LE,channels=1,rate=256000",
+			      (guint64)0x02u,
+			      g_variant_builder_end(&langs));
+        GVariant *voices_variant = g_variant_builder_end(&voices);
+        picotts_speech_provider_set_voices(skeleton, voices_variant);
+        g_variant_unref(voices_variant);
 
         g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/Picotts/Speech/Provider", NULL);
 }
