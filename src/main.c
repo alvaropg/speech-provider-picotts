@@ -24,6 +24,7 @@
 
 #include "picotts-speech-provider.h"
 
+#define MAX_OUTBUF_SIZE 128
 #define PICO_MEM_SIZE   2500000
 #define PICO_VOICE_NAME "PicoVoice"
 
@@ -44,10 +45,55 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
                               gboolean is_ssml,
                               const gchar *language)
 {
+	pico_Char *inp = NULL;
+	pico_Int16 bytes_sent, bytes_recv, text_remaining, out_data_type;
+        pico_Retstring outMessage;
+        int ret, getstatus;
+        short outbuf[MAX_OUTBUF_SIZE / 2];
+	int8_t *buffer;
+	size_t buffer_size = 256;
+	size_t bufused = 0;
+
 	g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
 
 	if (is_ssml)
           g_info("SSML not supported\n");
+
+        /* text_remaining = strlen(text) + 1; */
+	/* inp = (pico_Char *) text; */
+	/* while (text_remaining) { */
+	/* 	/\* feed the text into the engine.   *\/ */
+	/* 	if((ret = pico_putTextUtf8(pico_engine, inp, text_remaining, &bytes_sent))) { */
+	/* 		pico_getSystemStatusMessage(pico_system, ret, outMessage); */
+	/* 		g_error("Cannot put Text (%i): %s\n", ret, outMessage); */
+	/* 	} */
+
+	/* 	text_remaining -= bytes_sent; */
+	/* 	inp += bytes_sent; */
+
+	/* 	do { */
+	/* 		/\* Retrieve the samples and add them to the buffer. *\/ */
+	/* 		getstatus = pico_getData(pico_engine, (void *) outbuf, MAX_OUTBUF_SIZE, &bytes_recv, &out_data_type ); */
+	/* 		if ((getstatus != PICO_STEP_BUSY) && (getstatus !=PICO_STEP_IDLE)) { */
+	/* 			pico_getSystemStatusMessage(pico_system, getstatus, outMessage); */
+	/* 			g_error("Cannot get Data (%i): %s\n", getstatus, outMessage); */
+        /*                 } */
+
+	/* 		if (bytes_recv) { */
+	/* 			if ((bufused + bytes_recv) <= buffer_size) { */
+	/* 				memcpy(buffer + bufused, (int8_t *) outbuf, bytes_recv); */
+	/* 				bufused += bytes_recv; */
+	/* 			} else { */
+	/* 				done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
+	/* 				bufused = 0; */
+	/* 				memcpy(buffer, (int8_t *) outbuf, bytes_recv); */
+	/* 				bufused += bytes_recv; */
+	/* 			} */
+	/* 		} */
+	/* 	} while (PICO_STEP_BUSY == getstatus); */
+	/* 	/\* this chunk of synthesis is finished; pass the remaining samples *\/ */
+	/* 	done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
+	/* } */
 
 	return TRUE;
 }
@@ -180,7 +226,7 @@ int main(int argc, char *argv[])
 			on_name_acquired,
 			NULL,
 			NULL,
-			NULL);        
+			NULL);
 
 	g_main_loop_run (loop);
 
