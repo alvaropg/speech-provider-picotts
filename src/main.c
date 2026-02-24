@@ -30,11 +30,12 @@
 #define PICO_MEM_SIZE   2500000
 #define PICO_VOICE_NAME "PicoVoice"
 
-void           *pico_mem_area    = NULL;
-pico_System     pico_system      = NULL;
-pico_Engine     pico_engine      = NULL;
-pico_Resource   pico_ta_resource = NULL;
-pico_Resource   pico_sg_resource = NULL;
+void                  *pico_mem_area    = NULL;
+pico_System            pico_system      = NULL;
+pico_Engine            pico_engine      = NULL;
+pico_Resource          pico_ta_resource = NULL;
+pico_Resource          pico_sg_resource = NULL;
+PicottsSpeechProvider *skeleton         = NULL;
 
 
 gboolean on_handle_synthesize(PicottsSpeechProvider *object,
@@ -194,7 +195,6 @@ on_name_acquired (GDBusConnection *connection,
 		  const gchar *name,
 		  gpointer user_data)
 {
-	PicottsSpeechProvider *skeleton;
         GVariantBuilder voices;
         GVariantBuilder langs;
 
