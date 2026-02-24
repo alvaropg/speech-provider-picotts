@@ -97,7 +97,7 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 	/* const guint8 *bytes = (const guint8 *)buffer; */
 	/* gsize offset = 0; */
 
-        buffer = malloc(buffer_size);
+        buffer = g_malloc(buffer_size);
         /* TODO: check buffer */
 
         text_remaining = strlen(text) + 1;
