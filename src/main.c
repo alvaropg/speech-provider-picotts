@@ -90,11 +90,14 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 	GOutputStream *out = g_unix_output_stream_new(out_fd, FALSE);
 
 	/* Bucle de escritura explícito usando GIO.
-	 * Ojo: aunque buffer sea int8_t*, g_output_stream_write espera "gconstpointer",
+	 * TODO: aunque buffer sea int8_t*, g_output_stream_write espera "gconstpointer",
 	 * así que casteamos a const guint8* para aritmética clara.
 	 */
 	/* const guint8 *bytes = (const guint8 *)buffer; */
 	/* gsize offset = 0; */
+
+        buffer = malloc(buffer_size);
+        /* TODO: check buffer */
 
         text_remaining = strlen(text) + 1;
 	inp = (pico_Char *) text;
@@ -126,7 +129,7 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 					bufused += bytes_recv;
                                 } else {
 					gssize n = g_output_stream_write(out,
-									 buffer,
+									 (const guint8 *) buffer,
 									 bufused,
 									 NULL, /* GCancellable */
 									 &error);
@@ -155,7 +158,7 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 		/* done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
 
 		gssize n = g_output_stream_write(out,
-						 buffer,
+						 (const guint8 *) buffer,
 						 bufused,
 						 NULL, /* GCancellable */
 						 &error);
