@@ -216,7 +216,6 @@ on_name_acquired (GDBusConnection *connection,
 			      g_variant_builder_end(&langs));
         GVariant *voices_variant = g_variant_builder_end(&voices);
         picotts_speech_provider_set_voices(skeleton, voices_variant);
-        g_variant_unref(voices_variant);
 
         if (!g_dbus_interface_skeleton_export( G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/Picotts/Speech/Provider", &error)) {
 		g_warning("Export failed: %s", error->message);
