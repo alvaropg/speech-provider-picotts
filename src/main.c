@@ -197,6 +197,7 @@ on_name_acquired (GDBusConnection *connection,
 {
         GVariantBuilder voices;
         GVariantBuilder langs;
+	GError *error = NULL;
 
         skeleton = picotts_speech_provider_skeleton_new();
 	g_signal_connect(skeleton, "handle-synthesize", G_CALLBACK(on_handle_synthesize), NULL);
@@ -217,7 +218,10 @@ on_name_acquired (GDBusConnection *connection,
         picotts_speech_provider_set_voices(skeleton, voices_variant);
         g_variant_unref(voices_variant);
 
-        g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/Picotts/Speech/Provider", NULL);
+        if (!g_dbus_interface_skeleton_export( G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/Picotts/Speech/Provider", &error)) {
+		g_warning("Export failed: %s", error->message);
+		g_clear_error(&error);
+	}
 }
 
 int main(int argc, char *argv[])
