@@ -235,10 +235,23 @@ int main(int argc, char *argv[])
         if (ret) {
 		pico_getSystemStatusMessage(pico_system, ret, outMessage);
 		g_error("Cannot initialize pico (%i): %s\n", ret, outMessage);
+        }
+
+	char *pico_data_dir = NULL;
+        const gchar *const *system_dirs = g_get_system_data_dirs();
+        for (; *system_dirs != NULL; system_dirs++) {
+		pico_data_dir = g_build_filename(*system_dirs, "pico", NULL);
+		if (g_file_test (pico_data_dir, G_FILE_TEST_EXISTS | G_FILE_TEST_IS_DIR))
+			break;
+		g_clear_pointer (&pico_data_dir, g_free);
+        }
+
+        if (pico_data_dir == NULL) {
+		g_error("Cannot acces PicoTTS language files directory");
 	}
 
         /* load the text analysis Lingware resource file */
-	resource_file = g_build_filename("usr", "share", "pico", "lang", "es-ES_ta.bin", NULL);
+	resource_file = g_build_filename(pico_data_dir, "lang", "es-ES_ta.bin", NULL);
         ret = pico_loadResource(pico_system, (pico_Char *) resource_file, &pico_ta_resource);
 	if (ret) {
 		pico_getSystemStatusMessage(pico_system, ret, outMessage);
@@ -248,7 +261,7 @@ int main(int argc, char *argv[])
 		g_free(resource_file);
 
         /* load the signal generation Lingware resource file */
-        resource_file = g_build_filename("usr", "share", "pico", "lang", "es-ES_zl0_sg.bin", NULL);
+        resource_file = g_build_filename(pico_data_dir, "lang", "es-ES_zl0_sg.bin", NULL);
 	ret = pico_loadResource(pico_system, (pico_Char *) resource_file, &pico_sg_resource);
 	if (ret) {
 		pico_getSystemStatusMessage(pico_system, ret, outMessage);
@@ -256,6 +269,8 @@ int main(int argc, char *argv[])
         }
 	if (resource_file)
 		g_free(resource_file);
+
+	g_clear_pointer (&pico_data_dir, g_free);
 
 	/* get the text analysis resource name */
 	pico_ta_resource_name  = (pico_Char *) malloc(PICO_MAX_RESOURCE_NAME_SIZE);
