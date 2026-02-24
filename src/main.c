@@ -21,6 +21,7 @@
 #include <gio/gio.h>
 #include <picoapi.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include "picotts-speech-provider.h"
 
@@ -221,7 +222,12 @@ int main(int argc, char *argv[])
 			NULL,
 			NULL);
 
-	g_main_loop_run (loop);
+        g_main_loop_run(loop);
+
+	if (pico_system) {
+		pico_terminate(&pico_system);
+		pico_system = NULL;
+	}
 
 	return 0;
 }
