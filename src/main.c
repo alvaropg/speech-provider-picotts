@@ -19,6 +19,7 @@
 
 #include <glib.h>
 #include <gio/gio.h>
+#include <gio/gunixoutputstream.h>
 #include <picoapi.h>
 #include <stdlib.h>
 #include <stdint.h>
