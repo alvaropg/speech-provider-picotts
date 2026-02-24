@@ -139,6 +139,7 @@ int main(int argc, char *argv[])
 	pico_Char *pico_sg_resource_name  = NULL;
 
         /* initialize picotts */
+	pico_mem_area = malloc(PICO_MEM_SIZE);
         ret = pico_initialize(pico_mem_area, PICO_MEM_SIZE, &pico_system);
         if (ret) {
 		pico_getSystemStatusMessage(pico_system, ret, outMessage);
