@@ -51,50 +51,136 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
         pico_Retstring outMessage;
         int ret, getstatus;
         short outbuf[MAX_OUTBUF_SIZE / 2];
-	int8_t *buffer;
+        int8_t *buffer;
 	size_t buffer_size = 256;
-	size_t bufused = 0;
+        size_t bufused = 0;
+	gint32 pipe_fd_index = -1;
 
-	g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
+	/* DBus signature: (h s s d d b s) */
+        g_variant_get(pipe_fd, "h", &pipe_fd_index);
 
+        g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
 	if (is_ssml)
-          g_info("SSML not supported\n");
+          g_warning("SSML not supported\n");
 
-        /* text_remaining = strlen(text) + 1; */
-	/* inp = (pico_Char *) text; */
-	/* while (text_remaining) { */
-	/* 	/\* feed the text into the engine.   *\/ */
-	/* 	if((ret = pico_putTextUtf8(pico_engine, inp, text_remaining, &bytes_sent))) { */
-	/* 		pico_getSystemStatusMessage(pico_system, ret, outMessage); */
-	/* 		g_error("Cannot put Text (%i): %s\n", ret, outMessage); */
-	/* 	} */
+	/* obtener el fd real (UNIX fd) del argumento tipo 'h' */
+	GDBusMessage *msg = g_dbus_method_invocation_get_message(invocation);
+	GUnixFDList *fd_list = g_dbus_message_get_unix_fd_list(msg);
+	if (fd_list == NULL) {
+		g_dbus_method_invocation_return_error(invocation,
+						      G_IO_ERROR, G_IO_ERROR_FAILED,
+						      "No UNIX FD list attached to message");
+		return FALSE;
+	}
 
-	/* 	text_remaining -= bytes_sent; */
-	/* 	inp += bytes_sent; */
+	GError *error = NULL;
+	gint out_fd = g_unix_fd_list_get(fd_list, pipe_fd_index, &error);
+	if (out_fd < 0) {
+		g_dbus_method_invocation_return_gerror(invocation, error);
+		g_clear_error(&error);
+		return FALSE;
+	}
 
-	/* 	do { */
-	/* 		/\* Retrieve the samples and add them to the buffer. *\/ */
-	/* 		getstatus = pico_getData(pico_engine, (void *) outbuf, MAX_OUTBUF_SIZE, &bytes_recv, &out_data_type ); */
-	/* 		if ((getstatus != PICO_STEP_BUSY) && (getstatus !=PICO_STEP_IDLE)) { */
-	/* 			pico_getSystemStatusMessage(pico_system, getstatus, outMessage); */
-	/* 			g_error("Cannot get Data (%i): %s\n", getstatus, outMessage); */
-        /*                 } */
+	/* Envolver el fd en un GOutputStream.
+	 * close_fd:
+	 *  - FALSE => el stream NO cierra el fd al unref/close (tú decides).
+	 *  - TRUE  => el stream cerrará el fd al cerrarse.
+	 */
+	GOutputStream *out = g_unix_output_stream_new(out_fd, FALSE);
 
-	/* 		if (bytes_recv) { */
-	/* 			if ((bufused + bytes_recv) <= buffer_size) { */
-	/* 				memcpy(buffer + bufused, (int8_t *) outbuf, bytes_recv); */
-	/* 				bufused += bytes_recv; */
-	/* 			} else { */
-	/* 				done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
-	/* 				bufused = 0; */
-	/* 				memcpy(buffer, (int8_t *) outbuf, bytes_recv); */
-	/* 				bufused += bytes_recv; */
-	/* 			} */
-	/* 		} */
-	/* 	} while (PICO_STEP_BUSY == getstatus); */
-	/* 	/\* this chunk of synthesis is finished; pass the remaining samples *\/ */
-	/* 	done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
-	/* } */
+	/* Bucle de escritura explícito usando GIO.
+	 * Ojo: aunque buffer sea int8_t*, g_output_stream_write espera "gconstpointer",
+	 * así que casteamos a const guint8* para aritmética clara.
+	 */
+	/* const guint8 *bytes = (const guint8 *)buffer; */
+	/* gsize offset = 0; */
+
+        text_remaining = strlen(text) + 1;
+	inp = (pico_Char *) text;
+	while (text_remaining) {
+		/* feed the text into the engine */
+		if((ret = pico_putTextUtf8(pico_engine, inp, text_remaining, &bytes_sent))) {
+			pico_getSystemStatusMessage(pico_system, ret, outMessage);
+                        g_dbus_method_invocation_return_error(invocation, G_IO_ERROR, G_IO_ERROR_FAILED, "Cannot put Text (%i): %s", ret, outMessage);
+                        g_object_unref(out);
+			return FALSE;
+		}
+
+		text_remaining -= bytes_sent;
+		inp += bytes_sent;
+
+		do {
+			/* retrieve the samples and add them to the buffer */
+			getstatus = pico_getData(pico_engine, (void *) outbuf, MAX_OUTBUF_SIZE, &bytes_recv, &out_data_type );
+			if ((getstatus != PICO_STEP_BUSY) && (getstatus != PICO_STEP_IDLE)) {
+				pico_getSystemStatusMessage(pico_system, getstatus, outMessage);
+				g_dbus_method_invocation_return_error(invocation, G_IO_ERROR, G_IO_ERROR_FAILED, "Cannot get Data (%i): %s\n", getstatus, outMessage);
+				g_object_unref(out);
+				return FALSE;
+                        }
+
+			if (bytes_recv) {
+				if ((bufused + bytes_recv) <= buffer_size) {
+					memcpy(buffer + bufused, (int8_t *) outbuf, bytes_recv);
+					bufused += bytes_recv;
+                                } else {
+					gssize n = g_output_stream_write(out,
+									 buffer,
+									 bufused,
+									 NULL, /* GCancellable */
+									 &error);
+					if (n < 0) {
+						g_dbus_method_invocation_return_gerror(invocation, error);
+						g_clear_error(&error);
+						g_object_unref(out);
+						return FALSE;
+					}
+					if (n == 0) {
+						g_dbus_method_invocation_return_error(invocation,
+										      G_IO_ERROR, G_IO_ERROR_FAILED,
+										      "Short write (0 bytes written), pipe closed?");
+						g_object_unref(out);
+						return FALSE;
+					}
+
+					/* done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
+					bufused = 0;
+					memcpy(buffer, (int8_t *) outbuf, bytes_recv);
+					bufused += bytes_recv;
+				}
+			}
+		} while (PICO_STEP_BUSY == getstatus);
+		/* this chunk of synthesis is finished; pass the remaining samples */
+		/* done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
+
+		gssize n = g_output_stream_write(out,
+						 buffer,
+						 bufused,
+						 NULL, /* GCancellable */
+						 &error);
+		if (n < 0) {
+			g_dbus_method_invocation_return_gerror(invocation, error);
+			g_clear_error(&error);
+			g_object_unref(out);
+			return FALSE;
+		}
+		if (n == 0) {
+			g_dbus_method_invocation_return_error(invocation,
+							      G_IO_ERROR, G_IO_ERROR_FAILED,
+							      "Short write (0 bytes written), pipe closed?");
+			g_object_unref(out);
+			return FALSE;
+		}
+	}
+
+	if (!g_output_stream_flush(out, NULL, &error)) {
+		g_dbus_method_invocation_return_gerror(invocation, error);
+		g_clear_error(&error);
+		g_object_unref(out);
+		return FALSE;
+	}
+
+        g_object_unref(out);
 
 	return TRUE;
 }
