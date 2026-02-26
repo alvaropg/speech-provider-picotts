@@ -242,7 +242,7 @@ on_name_acquired (GDBusConnection *connection,
 	g_variant_builder_add(&voices, "(ssst@as)",
 			      "PicoTTS Spanish (Spain)",
 			      "picotts-es_ES",
-			      "audio/x-raw,format=S16LE,channels=1,rate=256000",
+			      "audio/x-raw,format=S16LE,channels=1,rate=16000",
 			      (guint64)0x02u,
 			      g_variant_builder_end(&langs));
         GVariant *voices_variant = g_variant_builder_end(&voices);
