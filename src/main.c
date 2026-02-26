@@ -38,167 +38,188 @@ pico_Resource          pico_sg_resource = NULL;
 PicottsSpeechProvider *skeleton         = NULL;
 
 
-gboolean on_handle_synthesize(PicottsSpeechProvider *object,
-                              GDBusMethodInvocation *invocation,
-                              GVariant *pipe_fd,
-                              const gchar *text,
-                              const gchar *voice_id,
-                              gdouble pitch,
-                              gdouble rate,
-                              gboolean is_ssml,
-                              const gchar *language)
+gboolean
+on_handle_synthesize(PicottsSpeechProvider *object,
+                     GDBusMethodInvocation *invocation,
+                     GVariant *pipe_fd,
+                     const gchar *text,
+                     const gchar *voice_id,
+                     gdouble pitch,
+                     gdouble rate,
+                     gboolean is_ssml,
+                     const gchar *language)
 {
 	pico_Char *inp = NULL;
-	pico_Int16 bytes_sent, bytes_recv, text_remaining, out_data_type;
-        pico_Retstring outMessage;
-        int ret, getstatus;
-        short outbuf[MAX_OUTBUF_SIZE / 2];
-        int8_t *buffer;
-	size_t buffer_size = 256;
-        size_t bufused = 0;
+	pico_Int16 bytes_sent = 0, bytes_recv = 0, text_remaining = 0, out_data_type = 0;
+	pico_Retstring outMessage;
+	int ret = 0, getstatus = 0;
+
+	short outbuf[MAX_OUTBUF_SIZE / 2];
+
+	/* Buffer temporal para agrupar audio antes de escribir al pipe */
+	guint8 *buffer = NULL;
+	gsize buffer_size = 256;
+	gsize bufused = 0;
+
 	gint32 pipe_fd_index = -1;
+	GError *error = NULL;
 
-	/* DBus signature: (h s s d d b s) */
-        g_variant_get(pipe_fd, "h", &pipe_fd_index);
+	(void)voice_id;
+	(void)pitch;
+	(void)rate;
 
-        g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
+	/* DBus signature: (h s s d d b s) -> aquí solo leemos 'h' */
+	g_variant_get(pipe_fd, "h", &pipe_fd_index);
+
+	g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
 	if (is_ssml)
-          g_warning("SSML not supported\n");
+		g_warning("SSML not supported\n");
 
-	/* obtener el fd real (UNIX fd) del argumento tipo 'h' */
+	/* 1) Obtener el fd real (UNIX fd) del argumento tipo 'h' */
 	GDBusMessage *msg = g_dbus_method_invocation_get_message(invocation);
 	GUnixFDList *fd_list = g_dbus_message_get_unix_fd_list(msg);
 	if (fd_list == NULL) {
 		g_dbus_method_invocation_return_error(invocation,
-						      G_IO_ERROR, G_IO_ERROR_FAILED,
-						      "No UNIX FD list attached to message");
-		return FALSE;
+		                                      G_IO_ERROR, G_IO_ERROR_FAILED,
+		                                      "No UNIX FD list attached to message");
+		return TRUE; /* Ya respondimos con error */
 	}
 
-	GError *error = NULL;
 	gint out_fd = g_unix_fd_list_get(fd_list, pipe_fd_index, &error);
 	if (out_fd < 0) {
 		g_dbus_method_invocation_return_gerror(invocation, error);
 		g_clear_error(&error);
-		return FALSE;
+		return TRUE; /* Ya respondimos con error */
 	}
 
-	/* Envolver el fd en un GOutputStream.
-	 * close_fd:
-	 *  - FALSE => el stream NO cierra el fd al unref/close (tú decides).
-	 *  - TRUE  => el stream cerrará el fd al cerrarse.
-	 */
+	/* 2) Envolver el fd en un GOutputStream y cerrarlo al terminar (EOF para el cliente) */
 	GOutputStream *out = g_unix_output_stream_new(out_fd, TRUE);
 
-	/* Bucle de escritura explícito usando GIO.
-	 * TODO: aunque buffer sea int8_t*, g_output_stream_write espera "gconstpointer",
-	 * así que casteamos a const guint8* para aritmética clara.
-	 */
-	/* const guint8 *bytes = (const guint8 *)buffer; */
-	/* gsize offset = 0; */
+	/* Reserva buffer */
+	buffer = g_malloc(buffer_size);
+	if (buffer == NULL) {
+		g_dbus_method_invocation_return_error(invocation,
+		                                      G_IO_ERROR, G_IO_ERROR_FAILED,
+		                                      "Out of memory allocating output buffer");
+		g_object_unref(out);
+		return TRUE;
+	}
 
-        buffer = g_malloc(buffer_size);
-        /* TODO: check buffer */
+	/* Helper local: vuelca 'bufused' bytes y resetea bufused */
+#define FLUSH_BUFFER_OR_RETURN()                                                       \
+	G_STMT_START {                                                                     \
+		if (bufused > 0) {                                                             \
+			gsize bytes_written = 0;                                                   \
+			if (!g_output_stream_write_all(out, buffer, bufused,                        \
+			                               &bytes_written, NULL, &error)) {            \
+				g_dbus_method_invocation_return_gerror(invocation, error);             \
+				g_clear_error(&error);                                                 \
+				g_free(buffer);                                                        \
+				g_object_unref(out);                                                   \
+				return TRUE;                                                           \
+			}                                                                           \
+			/* write_all garantiza bytes_written == bufused si devuelve TRUE */         \
+			bufused = 0;                                                               \
+		}                                                                               \
+	} G_STMT_END
 
-        text_remaining = strlen(text) + 1;
-        inp = (pico_Char *) text;
-	while (text_remaining) {
+	/* 3) Síntesis: alimentar texto y recoger audio */
+	text_remaining = (pico_Int16)(strlen(text) + 1);
+	inp = (pico_Char *)text;
+
+	while (text_remaining > 0) {
 		/* feed the text into the engine */
-		if((ret = pico_putTextUtf8(pico_engine, inp, text_remaining, &bytes_sent))) {
+		ret = pico_putTextUtf8(pico_engine, inp, text_remaining, &bytes_sent);
+		if (ret) {
 			pico_getSystemStatusMessage(pico_system, ret, outMessage);
-                        g_dbus_method_invocation_return_error(invocation, G_IO_ERROR, G_IO_ERROR_FAILED, "Cannot put Text (%i): %s", ret, outMessage);
-                        g_object_unref(out);
-			return FALSE;
+			g_dbus_method_invocation_return_error(invocation,
+			                                      G_IO_ERROR, G_IO_ERROR_FAILED,
+			                                      "Cannot put Text (%i): %s", ret, outMessage);
+			g_free(buffer);
+			g_object_unref(out);
+			return TRUE;
 		}
 
 		text_remaining -= bytes_sent;
 		inp += bytes_sent;
 
 		do {
-			/* retrieve the samples and add them to the buffer */
-			getstatus = pico_getData(pico_engine, (void *) outbuf, MAX_OUTBUF_SIZE, &bytes_recv, &out_data_type );
+			getstatus = pico_getData(pico_engine,
+			                         (void *)outbuf,
+			                         MAX_OUTBUF_SIZE,
+			                         &bytes_recv,
+			                         &out_data_type);
+
 			if ((getstatus != PICO_STEP_BUSY) && (getstatus != PICO_STEP_IDLE)) {
 				pico_getSystemStatusMessage(pico_system, getstatus, outMessage);
-				g_dbus_method_invocation_return_error(invocation, G_IO_ERROR, G_IO_ERROR_FAILED, "Cannot get Data (%i): %s\n", getstatus, outMessage);
+				g_dbus_method_invocation_return_error(invocation,
+				                                      G_IO_ERROR, G_IO_ERROR_FAILED,
+				                                      "Cannot get Data (%i): %s", getstatus, outMessage);
+				g_free(buffer);
 				g_object_unref(out);
-				return FALSE;
-                        }
+				return TRUE;
+			}
 
-                        if (bytes_recv) {
-                                if ((bufused + bytes_recv) <= buffer_size) {
-					memcpy(buffer + bufused, (int8_t *) outbuf, bytes_recv);
-					bufused += bytes_recv;
-                                } else {
-					gssize n = g_output_stream_write(out,
-									 (const guint8 *) buffer,
-									 bufused,
-									 NULL, /* GCancellable */
-									 &error);
-					if (n < 0) {
+			if (bytes_recv > 0) {
+				/* Si no cabe lo que llega, vacía primero */
+				if (bufused + (gsize)bytes_recv > buffer_size) {
+					FLUSH_BUFFER_OR_RETURN();
+				}
+
+				/* Si aun así no cabe (bytes_recv > buffer_size), escribe directo */
+				if ((gsize)bytes_recv > buffer_size) {
+					gsize bytes_written = 0;
+					if (!g_output_stream_write_all(out,
+					                               (const guint8 *)outbuf,
+					                               (gsize)bytes_recv,
+					                               &bytes_written,
+					                               NULL,
+					                               &error)) {
 						g_dbus_method_invocation_return_gerror(invocation, error);
 						g_clear_error(&error);
+						g_free(buffer);
 						g_object_unref(out);
-						return FALSE;
+						return TRUE;
 					}
-					if (n == 0) {
-						g_dbus_method_invocation_return_error(invocation,
-										      G_IO_ERROR, G_IO_ERROR_FAILED,
-										      "Short write (0 bytes written), pipe closed?");
-						g_object_unref(out);
-						return FALSE;
-					}
-
-					/* done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
-					bufused = 0;
-					memcpy(buffer, (int8_t *) outbuf, bytes_recv);
-					bufused += bytes_recv;
+				} else {
+					memcpy(buffer + bufused, (const guint8 *)outbuf, (gsize)bytes_recv);
+					bufused += (gsize)bytes_recv;
 				}
-                        }
-		} while (PICO_STEP_BUSY == getstatus);
-		/* this chunk of synthesis is finished; pass the remaining samples */
-		/* done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
+			}
 
-		gssize n = g_output_stream_write(out,
-						 (const guint8 *) buffer,
-						 bufused,
-						 NULL, /* GCancellable */
-						 &error);
-		if (n < 0) {
-			g_dbus_method_invocation_return_gerror(invocation, error);
-			g_clear_error(&error);
-			g_object_unref(out);
-			return FALSE;
-                }
-		if (n == 0) {
-			g_dbus_method_invocation_return_error(invocation,
-							      G_IO_ERROR, G_IO_ERROR_FAILED,
-							      "Short write (0 bytes written), pipe closed?");
-			g_object_unref(out);
-			return FALSE;
-                }
+		} while (getstatus == PICO_STEP_BUSY);
 	}
 
+	/* Volcar lo que quede pendiente */
+	FLUSH_BUFFER_OR_RETURN();
+
+	/* Flush + close (EOF) */
 	if (!g_output_stream_flush(out, NULL, &error)) {
 		g_dbus_method_invocation_return_gerror(invocation, error);
 		g_clear_error(&error);
+		g_free(buffer);
 		g_object_unref(out);
-		return FALSE;
-        }
+		return TRUE;
+	}
 
 	if (!g_output_stream_close(out, NULL, &error)) {
 		g_dbus_method_invocation_return_gerror(invocation, error);
 		g_clear_error(&error);
-		g_object_unref(out);
 		g_free(buffer);
-		return TRUE; /* O FALSE según tu estrategia; lo importante es responder */
+		g_object_unref(out);
+		return TRUE;
 	}
 
-
+	/* Completar el método D-Bus (respuesta al cliente) */
 	picotts_speech_provider_complete_synthesize(object, invocation);
-	g_object_unref(out);
+
 	g_free(buffer);
+	g_object_unref(out);
 	return TRUE;
+
+#undef FLUSH_BUFFER_OR_RETURN
 }
+
 
 static void
 on_name_acquired (GDBusConnection *connection,
