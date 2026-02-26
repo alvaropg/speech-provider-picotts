@@ -88,7 +88,7 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 	 *  - FALSE => el stream NO cierra el fd al unref/close (tú decides).
 	 *  - TRUE  => el stream cerrará el fd al cerrarse.
 	 */
-	GOutputStream *out = g_unix_output_stream_new(out_fd, FALSE);
+	GOutputStream *out = g_unix_output_stream_new(out_fd, TRUE);
 
 	/* Bucle de escritura explícito usando GIO.
 	 * TODO: aunque buffer sea int8_t*, g_output_stream_write espera "gconstpointer",
@@ -101,7 +101,7 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
         /* TODO: check buffer */
 
         text_remaining = strlen(text) + 1;
-	inp = (pico_Char *) text;
+        inp = (pico_Char *) text;
 	while (text_remaining) {
 		/* feed the text into the engine */
 		if((ret = pico_putTextUtf8(pico_engine, inp, text_remaining, &bytes_sent))) {
@@ -124,8 +124,8 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 				return FALSE;
                         }
 
-			if (bytes_recv) {
-				if ((bufused + bytes_recv) <= buffer_size) {
+                        if (bytes_recv) {
+                                if ((bufused + bytes_recv) <= buffer_size) {
 					memcpy(buffer + bufused, (int8_t *) outbuf, bytes_recv);
 					bufused += bytes_recv;
                                 } else {
@@ -153,7 +153,7 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 					memcpy(buffer, (int8_t *) outbuf, bytes_recv);
 					bufused += bytes_recv;
 				}
-			}
+                        }
 		} while (PICO_STEP_BUSY == getstatus);
 		/* this chunk of synthesis is finished; pass the remaining samples */
 		/* done = picoos_sdfPutSamples(sdOutFile, bufused / 2, (picoos_int16*) (buffer)); */
@@ -168,14 +168,14 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 			g_clear_error(&error);
 			g_object_unref(out);
 			return FALSE;
-		}
+                }
 		if (n == 0) {
 			g_dbus_method_invocation_return_error(invocation,
 							      G_IO_ERROR, G_IO_ERROR_FAILED,
 							      "Short write (0 bytes written), pipe closed?");
 			g_object_unref(out);
 			return FALSE;
-		}
+                }
 	}
 
 	if (!g_output_stream_flush(out, NULL, &error)) {
@@ -183,10 +183,20 @@ gboolean on_handle_synthesize(PicottsSpeechProvider *object,
 		g_clear_error(&error);
 		g_object_unref(out);
 		return FALSE;
+        }
+
+	if (!g_output_stream_close(out, NULL, &error)) {
+		g_dbus_method_invocation_return_gerror(invocation, error);
+		g_clear_error(&error);
+		g_object_unref(out);
+		g_free(buffer);
+		return TRUE; /* O FALSE según tu estrategia; lo importante es responder */
 	}
 
-        g_object_unref(out);
 
+	picotts_speech_provider_complete_synthesize(object, invocation);
+	g_object_unref(out);
+	g_free(buffer);
 	return TRUE;
 }
 
