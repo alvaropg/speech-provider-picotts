@@ -14,6 +14,7 @@ pkgdatadir = datadir / meson.project_name()
 application_id = 'org.Picotts.Speech.Provider'
 
 subdir('src')
+subdir('tests')
 
 config = configuration_data()
 config.set('bindir', bindir)
