@@ -64,11 +64,17 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 	gint32 pipe_fd_index = -1;
 	GError *error = NULL;
 
-	(void)voice_id;
-	(void)pitch;
-	(void)rate;
+	GDBusConnection *conn = g_dbus_method_invocation_get_connection(invocation);
+	GIOStream *stream = g_dbus_connection_get_stream(conn);
 
-	/* DBus signature: (h s s d d b s) -> aquí solo leemos 'h' */
+	if (G_IS_SOCKET_CONNECTION(stream)) {
+		GSocket *sock = g_socket_connection_get_socket(G_SOCKET_CONNECTION(stream));
+		GSocketFamily fam = g_socket_get_family(sock);
+		g_print("DBus connection socket family: %d (UNIX=%d)\n", fam, G_SOCKET_FAMILY_UNIX);
+	} else {
+		g_warning("DBus connection stream is not a GSocketConnection (type=%s)\n", G_OBJECT_TYPE_NAME(stream));
+	}
+
 	g_variant_get(pipe_fd, "h", &pipe_fd_index);
 
 	g_print("Required to synthesize \"%s\" in language \"%s\"\n", text, language);
@@ -78,18 +84,23 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 	/* 1) Obtener el fd real (UNIX fd) del argumento tipo 'h' */
 	GDBusMessage *msg = g_dbus_method_invocation_get_message(invocation);
 	GUnixFDList *fd_list = g_dbus_message_get_unix_fd_list(msg);
-	if (fd_list == NULL) {
+        if (fd_list == NULL) {
+		g_warning("No unix fd list attached to message (0 fds received)");
 		g_dbus_method_invocation_return_error(invocation,
 		                                      G_IO_ERROR, G_IO_ERROR_FAILED,
 		                                      "No UNIX FD list attached to message");
-		return TRUE; /* Ya respondimos con error */
+		return TRUE;
+	} else {
+		gint n_fds = g_unix_fd_list_get_length(fd_list);
+		g_print("Received unix fd list with %d fd(s)\n", n_fds);
 	}
 
 	gint out_fd = g_unix_fd_list_get(fd_list, pipe_fd_index, &error);
-	if (out_fd < 0) {
+        if (out_fd < 0) {
+		g_printerr("%s\n", error->message);
 		g_dbus_method_invocation_return_gerror(invocation, error);
 		g_clear_error(&error);
-		return TRUE; /* Ya respondimos con error */
+		return TRUE;
 	}
 
 	/* 2) Envolver el fd en un GOutputStream y cerrarlo al terminar (EOF para el cliente) */
@@ -97,7 +108,8 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 
 	/* Reserva buffer */
 	buffer = g_malloc(buffer_size);
-	if (buffer == NULL) {
+        if (buffer == NULL) {
+		g_warning("Out of memory allocating output buffer");
 		g_dbus_method_invocation_return_error(invocation,
 		                                      G_IO_ERROR, G_IO_ERROR_FAILED,
 		                                      "Out of memory allocating output buffer");
@@ -125,13 +137,14 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 
 	/* 3) Síntesis: alimentar texto y recoger audio */
 	text_remaining = (pico_Int16)(strlen(text) + 1);
-	inp = (pico_Char *)text;
+        inp = (pico_Char *)text;
 
-	while (text_remaining > 0) {
+        while (text_remaining > 0) {
 		/* feed the text into the engine */
 		ret = pico_putTextUtf8(pico_engine, inp, text_remaining, &bytes_sent);
 		if (ret) {
 			pico_getSystemStatusMessage(pico_system, ret, outMessage);
+			g_warning("Cannot put Text (%i): %s\n", ret, outMessage);
 			g_dbus_method_invocation_return_error(invocation,
 			                                      G_IO_ERROR, G_IO_ERROR_FAILED,
 			                                      "Cannot put Text (%i): %s", ret, outMessage);
@@ -143,7 +156,7 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 		text_remaining -= bytes_sent;
 		inp += bytes_sent;
 
-		do {
+                do {
 			getstatus = pico_getData(pico_engine,
 			                         (void *)outbuf,
 			                         MAX_OUTBUF_SIZE,
@@ -152,6 +165,7 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 
 			if ((getstatus != PICO_STEP_BUSY) && (getstatus != PICO_STEP_IDLE)) {
 				pico_getSystemStatusMessage(pico_system, getstatus, outMessage);
+				g_warning("Cannot get Data (%i): %s\n", getstatus, outMessage);
 				g_dbus_method_invocation_return_error(invocation,
 				                                      G_IO_ERROR, G_IO_ERROR_FAILED,
 				                                      "Cannot get Data (%i): %s", getstatus, outMessage);
@@ -175,6 +189,7 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 					                               &bytes_written,
 					                               NULL,
 					                               &error)) {
+						g_printerr("Error writting: %s\n", error->message);
 						g_dbus_method_invocation_return_gerror(invocation, error);
 						g_clear_error(&error);
 						g_free(buffer);
