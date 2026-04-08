@@ -62,7 +62,9 @@ on_handle_synthesize(PicottsSpeechProvider *object,
 	gsize bufused = 0;
 
 	gint32 pipe_fd_index = -1;
-	GError *error = NULL;
+        GError *error = NULL;
+
+        pico_resetEngine(pico_engine, PICO_RESET_SOFT);
 
 	GDBusConnection *conn = g_dbus_method_invocation_get_connection(invocation);
 	GIOStream *stream = g_dbus_connection_get_stream(conn);
